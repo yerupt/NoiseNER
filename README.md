@@ -12,6 +12,31 @@ Named Entity Recognition (NER) in the cybersecurity domain suffers from severe l
 * **Semantic Similarity-based LDL:** Recycles discarded ID noise via a novel Label Distribution Learning strategy constrained by contextual semantic similarity.
 * **Plug-and-Play Resilience:** Demonstrates robust performance in low-resource settings, outperforming state-of-the-art noise-robust NER baselines.
 
+## 📊 Baselines & Reproducibility
+
+To ensure a strictly fair and rigorous comparison as stated in our manuscript, we adopted a hybrid implementation strategy for the baselines:
+
+### 1. Reproduced Baselines (Code provided in this repo)
+Since the official source code for **NAF** was unavailable, we have faithfully reproduced it using the `Luke` model backbone as described in their original paper. The complete reproduced code is available in our repository:
+* 📂 **NAF**: Available in `baselines/NAF_reproduced/`
+
+### 2. Open-Source Baselines (Links to official repos)
+For baselines with officially released code, we deliberately retained their original pre-trained backbones and optimal configurations. To run these models on our datasets, we provide the data-formatting scripts and hyperparameter runner scripts in `baselines/runner_scripts/`. You can find their official source code below:
+
+| Baseline | Official Repository Link |
+| :--- | :--- |
+| **Co-teaching** | [https://github.com/bhanML/Co-teaching](https://github.com/bhanML/Co-teaching) |
+| **RoSTER** | [https://github.com/yumeng5/RoSTER](https://github.com/yumeng5/RoSTER) |
+| **BOND** | [https://github.com/cliang1453/BOND](https://github.com/cliang1453/BOND) |
+
+| **STGN** | [https://github.com/wutong8023/STGN](https://github.com/wutong8023/STGN) |
+| **MSR** | [https://github.com/z10is1an/Meta-Self-Refinement](https://github.com/z10is1an/Meta-Self-Refinement) |
+| **CuPUL** | [https://github.com/liyp0095/CuPUL](https://github.com/liyp0095/CuPUL) |
+| **CENSOR** | [https://github.com/PKUnlp-icler/CENSOR](https://github.com/PKUnlp-icler/CENSOR) |
+| **DS-NER** |[https://github.com/ yumeng5/RoSTER.](https://github.com/yyDing1/DS-NER)|
+| **DEER** | [https://github.com/bflashcp3f/deer](https://github.com/bflashcp3f/deer) |
+
+
 ## 📂 Repository Structure
 ```text
 NoiseNER/
