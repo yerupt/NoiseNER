@@ -1,8 +1,4 @@
 # NoiseNER
-# Noise-Aware Joint Training for Cybersecurity NER
-
-This repository contains the official PyTorch implementation of the paper:
-**"A noise-aware method for low source named entity recognition in cybersecurity"** *(Currently under review at Information Processing & Management, IP&M)*.
 
 ![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)
 ![PyTorch 1.10+](https://img.shields.io/badge/pytorch-1.10+-orange.svg)
@@ -22,7 +18,7 @@ NoiseNER/
 ├── data/                    # Sample data for APTNER, CoNLL03, Webpage
 ├── source/                  # Core implementation of our proposed model
 │   ├── main.py              # Entry point for training and evaluation
-│   ├── models.py            # Dual-network encoder (ALBERT/ELECTRA)
+│   ├── models.py            # Dual-network encoder 
 │   ├── data_processor.py    # Data loading and augmentation module
 │   └── loss.py              # Self-supervised, KDE, and LDL loss functions
 ├── baselines/               # Scripts and replicated code for baseline models
