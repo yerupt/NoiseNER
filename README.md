@@ -18,7 +18,7 @@ To ensure a strictly fair and rigorous comparison as stated in our manuscript, w
 
 ### 1. Reproduced Baselines (Code provided in this repo)
 Since the official source code for **NAF** was unavailable, we have faithfully reproduced it using the `Luke` model backbone as described in their original paper. The complete reproduced code is available in our repository:
-* 📂 **NAF**: Available in `baselines/NAF_reproduced/`
+* 📂 **NAF**: Available in `NAF_reproduced/`
 
 ### 2. Open-Source Baselines (Links to official repos)
 For baselines with officially released code, we deliberately retained their original pre-trained backbones and optimal configurations. To run these models on our datasets, we provide the data-formatting scripts and hyperparameter runner scripts in `baselines/runner_scripts/`. You can find their official source code below:
