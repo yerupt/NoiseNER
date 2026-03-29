@@ -28,7 +28,6 @@ For baselines with officially released code, we deliberately retained their orig
 | **Co-teaching** | [https://github.com/bhanML/Co-teaching](https://github.com/bhanML/Co-teaching) |
 | **RoSTER** | [https://github.com/yumeng5/RoSTER](https://github.com/yumeng5/RoSTER) |
 | **BOND** | [https://github.com/cliang1453/BOND](https://github.com/cliang1453/BOND) |
-
 | **STGN** | [https://github.com/wutong8023/STGN](https://github.com/wutong8023/STGN) |
 | **MSR** | [https://github.com/z10is1an/Meta-Self-Refinement](https://github.com/z10is1an/Meta-Self-Refinement) |
 | **CuPUL** | [https://github.com/liyp0095/CuPUL](https://github.com/liyp0095/CuPUL) |
