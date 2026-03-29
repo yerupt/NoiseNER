@@ -45,8 +45,6 @@ NoiseNER/
 │   ├── models.py            # Dual-network encoder 
 │   ├── data_processor.py    # Data loading and augmentation module
 │   └── loss.py              # Self-supervised, KDE, and LDL loss functions
-├── baselines/               # Scripts and replicated code for baseline models
-│   ├── NAF_reproduced/      # Our faithful reproduction of NAF using the Luke model
-│   └── runner_scripts/      # Shell scripts to run other open-source baselines
+├── ├── NAF_reproduced/      # Our faithful reproduction of NAF using the Luke model
 ├── requirements.txt         # Dependencies
 └── README.md
