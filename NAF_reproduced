@@ -1,1 +1,179 @@
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from torch.utils.data import DataLoader, Dataset, Subset
+from transformers import AutoModel, AutoConfig
+from torchcrf import CRF
+import numpy as np
 
+# ==========================================
+# 1. 核心损失函数：In-trust Loss
+# ==========================================
+class InTrustLoss(nn.Module):
+    def __init__(self, num_classes, alpha=1.0, beta=1.0, delta=0.5):
+        super(InTrustLoss, self).__init__()
+        self.num_classes = num_classes
+        self.alpha = alpha
+        self.beta = beta
+        self.delta = delta
+
+    def compute_dce_loss(self, logits, labels, mask):
+        p = F.softmax(logits, dim=-1)
+        q = F.one_hot(labels, num_classes=self.num_classes).float()
+        a = self.delta * p + (1.0 - self.delta) * q
+        
+        dce_loss_per_token = -p * torch.log(a + 1e-9)
+        dce_loss_per_token = dce_loss_per_token.sum(dim=-1)
+        
+        dce_loss_per_token = dce_loss_per_token * mask.float()
+        return dce_loss_per_token.sum() / mask.float().sum()
+
+    def forward(self, logits, labels, crf_loss, mask):
+        dce_loss = self.compute_dce_loss(logits, labels, mask)
+        # crf_loss 通常已经是标量，代表 batch 的平均/总和负对数似然
+        in_trust_loss = self.alpha * crf_loss + self.beta * dce_loss
+        return in_trust_loss
+
+# ==========================================
+# 2. 核心机制：LMD Tracker
+# ==========================================
+class LMDTracker:
+    def __init__(self, num_samples, num_epochs):
+        self.num_samples = num_samples
+        self.num_epochs = num_epochs
+        self.lmd_history = torch.zeros((num_samples, num_epochs))
+
+    def compute_step_lmd(self, logits, labels, mask):
+        batch_size, seq_len, num_classes = logits.size()
+        Z_y = logits.gather(-1, labels.unsqueeze(-1)).squeeze(-1)
+        
+        ignore_mask = torch.zeros_like(logits, dtype=torch.bool)
+        ignore_mask.scatter_(-1, labels.unsqueeze(-1), True)
+        
+        Z_other = logits.masked_fill(ignore_mask, float('-inf'))
+        max_Z_other, _ = Z_other.max(dim=-1)
+        
+        diff = Z_y - max_Z_other
+        diff = diff.masked_fill(~mask.bool(), float('inf'))
+        
+        # 获取句子中最小的 LMD 得分 [batch_size]
+        sentence_lmd, _ = diff.min(dim=-1)
+        return sentence_lmd
+
+    def update_history(self, sample_indices, sentence_lmds, current_epoch):
+        self.lmd_history[sample_indices, current_epoch] = sentence_lmds.detach().cpu()
+
+    def get_clean_sample_indices(self, noise_ratio_mu):
+        avg_lmd = self.lmd_history.mean(dim=1)
+        sorted_indices = torch.argsort(avg_lmd)
+        
+        # 截取排名靠前的作为干净样本 (剔除得分最低的 noise_ratio_mu 比例)
+        num_noise = int(self.num_samples * noise_ratio_mu)
+        clean_indices = sorted_indices[num_noise:].tolist()
+        return clean_indices
+# ==========================================
+# 3. 基础模型：Pretrained Model + CRF
+# ==========================================
+class NAFModel(nn.Module):
+    def __init__(self, model_name, num_classes):
+        super(NAFModel, self).__init__()
+        self.config = AutoConfig.from_pretrained(model_name)
+        self.bert = AutoModel.from_pretrained(model_name)
+        self.dropout = nn.Dropout(self.config.hidden_dropout_prob)
+        self.classifier = nn.Linear(self.config.hidden_size, num_classes)
+        self.crf = CRF(num_tags=num_classes, batch_first=True)
+
+    def forward(self, input_ids, attention_mask, labels=None):
+        outputs = self.bert(input_ids=input_ids, attention_mask=attention_mask)
+        sequence_output = outputs[0]
+        sequence_output = self.dropout(sequence_output)
+        logits = self.classifier(sequence_output)
+        
+        loss = None
+        if labels is not None:
+            # CRF 默认计算的是对数似然，取负号得到 Loss
+            # reduction='mean' 返回 batch 的平均 loss
+            crf_loss = -self.crf(logits, labels, mask=attention_mask.byte(), reduction='mean')
+            loss = crf_loss
+            
+        return logits, loss
+# ==========================================
+# 4. 完整的两阶段训练 Pipeline
+# ==========================================
+def train_naf_pipeline(
+    dataset, 
+    model_name="bert-base-cased", # 可无缝切换为 google/electra-base-discriminator
+    num_classes=9, 
+    batch_size=32, 
+    num_epochs=60, # 论文中提到在 60 epochs 观察 LMD
+    noise_ratio=0.1, # 预估的噪声比例 mu
+    lr=1e-5
+):
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    
+    # 阶段一：在包含噪声的数据集上训练，记录 LMD
+    print(">>> Phase 1: Training with In-trust loss and tracking LMD...")
+    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
+    
+    model = NAFModel(model_name, num_classes).to(device)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=lr)
+    
+    # 根据论文参数设置 alpha, beta, delta
+    criterion = InTrustLoss(num_classes=num_classes, alpha=1.0, beta=1.0, delta=0.5).to(device)
+    tracker = LMDTracker(num_samples=len(dataset), num_epochs=num_epochs)
+    
+    model.train()
+    for epoch in range(num_epochs):
+        for batch in dataloader:
+            # 假设 dataset 返回: indices, input_ids, attention_mask, labels
+            indices = batch['index']
+            input_ids = batch['input_ids'].to(device)
+            attention_mask = batch['attention_mask'].to(device)
+            labels = batch['labels'].to(device)
+            
+            optimizer.zero_grad()
+            logits, crf_loss = model(input_ids, attention_mask, labels)
+            
+            # 1. 计算当前 step 的 In-trust Loss
+            loss = criterion(logits, labels, crf_loss, attention_mask)
+            loss.backward()
+            optimizer.step()
+            
+            # 2. 计算并记录 LMD
+            step_lmd = tracker.compute_step_lmd(logits, labels, attention_mask)
+            tracker.update_history(indices, step_lmd, epoch)
+            
+        print(f"Epoch {epoch+1}/{num_epochs} completed. Loss: {loss.item():.4f}")
+
+    # 阶段二：过滤噪声样本
+    print("\n>>> Phase 2: Filtering noisy samples...")
+    clean_indices = tracker.get_clean_sample_indices(noise_ratio_mu=noise_ratio)
+    print(f"Original dataset size: {len(dataset)}, Cleaned dataset size: {len(clean_indices)}")
+    
+    clean_dataset = Subset(dataset, clean_indices)
+    clean_dataloader = DataLoader(clean_dataset, batch_size=batch_size, shuffle=True)
+    
+    # 阶段三：在干净的数据集上重新初始化模型并训练
+    print("\n>>> Phase 3: Retraining on cleaned dataset...")
+    # 重新初始化模型以避免前一阶段过拟合权重的干扰
+    final_model = NAFModel(model_name, num_classes).to(device)
+    final_optimizer = torch.optim.AdamW(final_model.parameters(), lr=lr)
+    
+    final_model.train()
+    for epoch in range(num_epochs):  # 或者根据验证集早停
+        for batch in clean_dataloader:
+            input_ids = batch['input_ids'].to(device)
+            attention_mask = batch['attention_mask'].to(device)
+            labels = batch['labels'].to(device)
+            
+            final_optimizer.zero_grad()
+            # 此时数据集已经干净，可以直接使用标准的 CRF loss，或者继续使用 In-trust
+            logits, loss = final_model(input_ids, attention_mask, labels) 
+            
+            loss.backward()
+            final_optimizer.step()
+            
+        print(f"Retrain Epoch {epoch+1}/{num_epochs} completed. Loss: {loss.item():.4f}")
+
+    print(">>> NAF Pipeline Finished.")
+    return final_model
